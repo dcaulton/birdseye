@@ -1,0 +1,59 @@
+"""
+SQLAlchemy models for birdseye.
+"""
+
+from datetime import datetime
+from typing import Optional
+
+from geoalchemy2 import Geometry
+from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy.orm import declarative_base, relationship
+
+Base = declarative_base()
+
+
+class Mission(Base):
+    __tablename__ = "missions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    created_at = Column(DateTime, default=datetime.utcnow, nullable=False)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+
+    original_filename = Column(String(255), nullable=False)
+    file_size_bytes = Column(Integer, nullable=True)
+    duration_seconds = Column(Float, nullable=True)
+
+    # Geospatial
+    bounding_box = Column(Geometry("POLYGON", srid=4326), nullable=True)
+    center_point = Column(Geometry("POINT", srid=4326), nullable=True)
+
+    status = Column(String(50), default="pending", nullable=False)
+    error_message = Column(Text, nullable=True)
+    metadata = Column(JSON, default=dict)
+
+    frames = relationship("Frame", back_populates="mission", cascade="all, delete-orphan")
+
+
+class Frame(Base):
+    __tablename__ = "frames"
+
+    id = Column(Integer, primary_key=True, index=True)
+    mission_id = Column(Integer, ForeignKey("missions.id"), nullable=False, index=True)
+
+    frame_timestamp = Column(DateTime, nullable=False)
+    frame_number = Column(Integer, nullable=True)
+    relative_time_seconds = Column(Float, nullable=True)
+
+    location = Column(Geometry("POINT", srid=4326), nullable=True)
+    altitude_m = Column(Float, nullable=True)
+    gimbal_pitch_deg = Column(Float, nullable=True)
+
+    frame_path = Column(String(512), nullable=True)
+    thumbnail_path = Column(String(512), nullable=True)
+
+    vegetation_index = Column(Float, nullable=True)
+    analysis_metadata = Column(JSON, default=dict)
+
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+    mission = relationship("Mission", back_populates="frames")
