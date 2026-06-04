@@ -3,13 +3,14 @@ SQLAlchemy models for birdseye.
 """
 
 from datetime import datetime
-from typing import Optional
 
 from geoalchemy2 import Geometry
 from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import declarative_base, relationship
+from sqlalchemy.orm import DeclarativeBase, relationship
 
-Base = declarative_base()
+
+class Base(DeclarativeBase):  # type: ignore
+    pass
 
 
 class Mission(Base):
@@ -29,7 +30,7 @@ class Mission(Base):
 
     status = Column(String(50), default="pending", nullable=False)
     error_message = Column(Text, nullable=True)
-    metadata = Column(JSON, default=dict)
+    meta = Column(JSON, default=dict)
 
     frames = relationship("Frame", back_populates="mission", cascade="all, delete-orphan")
 

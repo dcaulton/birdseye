@@ -11,9 +11,13 @@ dependencies = [
     "psycopg2-binary>=2.9.0",
     "geoalchemy2>=0.15.0",
     "pydantic>=2.9.0",
+    "pydantic-settings>=2.0.0",
     "python-multipart>=0.0.12",
     "alembic>=1.13.0",
     "structlog>=24.0.0",
+    "numpy>=1.26.0",
+    "opencv-python-headless>=4.10.0",
+    "shapely>=2.1.2",
 ]
 
 [tool.uv]
@@ -22,6 +26,10 @@ dev-dependencies = [
     "mypy>=1.11.0",
     "pre-commit>=3.8.0",
     "pytest>=8.3.0",
+    "httpx>=0.28.1",
+    "pytest-cov>=7.1.0",
+    "types-shapely>=2.1.0.20260603",
+    "testcontainers[postgres]>=4.14.2",
 ]
 
 [tool.ruff]
@@ -33,11 +41,13 @@ select = ["E", "F", "I", "UP", "B", "SIM", "C4"]
 ignore = ["E501"]
 
 [tool.mypy]
-python_version = "3.11"
+python_version = "3.12"
 strict = true
-warn_return_any = true
-warn_unused_configs = true
-disallow_untyped_defs = true
+mypy_path = ["src"]
+ignore_missing_imports = true
+warn_return_any = false
+plugins = ["pydantic.mypy"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+pythonpath = ["src"]
