@@ -1,7 +1,11 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
 [project]
 name = "birdseye"
 version = "0.1.0"
-description = "Drone video analysis and geospatial monitoring for Weathervane"
+description = "Biovisual monitoring for native yard restoration"
 readme = "README.md"
 requires-python = ">=3.12"
 dependencies = [

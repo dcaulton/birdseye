@@ -5,7 +5,7 @@ SQLAlchemy models for birdseye.
 from datetime import datetime
 
 from geoalchemy2 import Geometry
-from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, String, Text
+from sqlalchemy import JSON, BigInteger, Column, DateTime, Float, ForeignKey, Integer, String, Text
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -21,7 +21,7 @@ class Mission(Base):
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
     original_filename = Column(String(255), nullable=False)
-    file_size_bytes = Column(Integer, nullable=True)
+    file_size_bytes = Column(BigInteger, nullable=True)
     duration_seconds = Column(Float, nullable=True)
 
     # Geospatial
