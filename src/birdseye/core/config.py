@@ -6,7 +6,7 @@ from pydantic import Field
 from pydantic_settings import BaseSettings
 
 
-class Settings(BaseSettings):  # type: ignore[misc]
+class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+psycopg2://postgres:postgres@localhost:5432/birdseye"
     )

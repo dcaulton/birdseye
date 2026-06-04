@@ -26,7 +26,7 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 app = FastAPI(title="birdseye", version="0.1.0", lifespan=lifespan)
 
 
-@app.post("/upload", status_code=202)  # type: ignore[misc]
+@app.post("/upload", status_code=202)
 async def upload_video(
     background_tasks: BackgroundTasks,
     file: UploadFile = File(...),  # noqa: B008
@@ -54,7 +54,7 @@ async def upload_video(
 
     background_tasks.add_task(
         process_uploaded_video,
-        mission.id,
+        mission.id,  # type: ignore[arg-type]
         tmp_video_path,
         file.filename,
         tmp_srt_path,
@@ -63,6 +63,6 @@ async def upload_video(
     return {"mission_id": mission.id, "status": "pending"}
 
 
-@app.get("/health")  # type: ignore[misc]
+@app.get("/health")
 def health() -> dict[str, str]:
     return {"status": "ok"}

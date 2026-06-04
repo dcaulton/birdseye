@@ -18,7 +18,10 @@ repos:
     rev: v1.11.0
     hooks:
       - id: mypy
-        additional_dependencies: [pydantic>=2.9]
+        additional_dependencies:
+          - "sqlalchemy[mypy]>=2.0"
+          - "pydantic[mypy]>=2.0"
+        args: ["--config-file", "pyproject.toml"]
 
   - repo: local
     hooks:

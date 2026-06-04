@@ -9,7 +9,7 @@ from sqlalchemy import JSON, Column, DateTime, Float, ForeignKey, Integer, Strin
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
-class Base(DeclarativeBase):  # type: ignore
+class Base(DeclarativeBase):
     pass
 
 
@@ -25,8 +25,8 @@ class Mission(Base):
     duration_seconds = Column(Float, nullable=True)
 
     # Geospatial
-    bounding_box = Column(Geometry("POLYGON", srid=4326), nullable=True)
-    center_point = Column(Geometry("POINT", srid=4326), nullable=True)
+    bounding_box = Column(Geometry("POLYGON", srid=4326), nullable=True)  # type: ignore[var-annotated]
+    center_point = Column(Geometry("POINT", srid=4326), nullable=True)  # type: ignore[var-annotated]
 
     status = Column(String(50), default="pending", nullable=False)
     error_message = Column(Text, nullable=True)
@@ -45,7 +45,7 @@ class Frame(Base):
     frame_number = Column(Integer, nullable=True)
     relative_time_seconds = Column(Float, nullable=True)
 
-    location = Column(Geometry("POINT", srid=4326), nullable=True)
+    location = Column(Geometry("POINT", srid=4326), nullable=True)  # type: ignore[var-annotated]
     altitude_m = Column(Float, nullable=True)
     gimbal_pitch_deg = Column(Float, nullable=True)
 

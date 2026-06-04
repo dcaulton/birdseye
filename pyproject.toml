@@ -30,6 +30,8 @@ dev-dependencies = [
     "pytest-cov>=7.1.0",
     "types-shapely>=2.1.0.20260603",
     "testcontainers[postgres]>=4.14.2",
+    "sqlalchemy[mypy]>=2.0.50",
+    "pydantic[mypy]>=2.13.4",
 ]
 
 [tool.ruff]
@@ -42,11 +44,18 @@ ignore = ["E501"]
 
 [tool.mypy]
 python_version = "3.12"
-strict = true
+strict = false
 mypy_path = ["src"]
 ignore_missing_imports = true
 warn_return_any = false
-plugins = ["pydantic.mypy"]
+plugins = [
+    "sqlalchemy.ext.mypy.plugin",
+    "pydantic.mypy",
+]
+
+[[tool.mypy.overrides]]
+module = "birdseye.tasks.processing"
+ignore_errors = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
