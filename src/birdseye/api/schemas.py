@@ -1,0 +1,75 @@
+"""
+Pydantic response schemas for birdseye API.
+All models are designed to be mypy + ruff clean and serializable.
+"""
+
+from datetime import datetime
+from typing import Any
+
+from pydantic import BaseModel
+
+
+class Location(BaseModel):
+    """Simple lon/lat representation for API responses."""
+
+    lon: float
+    lat: float
+
+
+class MissionListItem(BaseModel):
+    """Lightweight mission for list views with paging."""
+
+    id: int
+    created_at: datetime
+    status: str
+    original_filename: str
+    duration_seconds: float | None = None
+    center: Location | None = None
+    frame_count: int = 0
+
+
+class MissionDetail(MissionListItem):
+    """Full mission detail including geospatial and metadata."""
+
+    updated_at: datetime
+    file_size_bytes: int | None = None
+    error_message: str | None = None
+    meta: dict[str, Any] = {}
+    bounding_box: dict[str, Any] | None = None  # GeoJSON-like
+
+
+class FrameListItem(BaseModel):
+    """Lightweight frame for list views."""
+
+    id: int
+    mission_id: int
+    relative_time_seconds: float | None = None
+    frame_number: int | None = None
+    location: Location | None = None
+    altitude_m: float | None = None
+    gimbal_pitch_deg: float | None = None
+    vegetation_index: float | None = None
+    thumbnail_path: str | None = None
+    created_at: datetime
+
+
+class FrameDetail(FrameListItem):
+    """Full frame detail with timestamp and full analysis metadata."""
+
+    frame_timestamp: datetime
+    frame_path: str | None = None
+    analysis_metadata: dict[str, Any] = {}
+
+
+class PaginatedMissions(BaseModel):
+    """Standard paged response for missions."""
+
+    total: int
+    items: list[MissionListItem]
+
+
+class PaginatedFrames(BaseModel):
+    """Standard paged response for frames."""
+
+    total: int
+    items: list[FrameListItem]

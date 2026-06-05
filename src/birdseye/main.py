@@ -12,6 +12,7 @@ from typing import Any
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 
+from .api.v1.routers.missions import router as v1_missions_router
 from .db.models import Mission
 from .db.session import get_db, init_db
 from .tasks.processing import process_uploaded_video
@@ -24,6 +25,9 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
 
 
 app = FastAPI(title="birdseye", version="0.1.0", lifespan=lifespan)
+
+# Versioned API following project conventions (easy to add /v2 later)
+app.include_router(v1_missions_router, prefix="/api/v1")
 
 
 @app.post("/upload", status_code=202)
