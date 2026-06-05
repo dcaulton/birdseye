@@ -58,6 +58,20 @@ def parse_dji_srt(srt_path: Path | str) -> list[dict[str, Any]]:
         if m := re.search(r"\bD\s+([-\d.]+)\s*m\b", meta, re.I):
             rel_alt = float(m.group(1))
 
+        # Fallback parser for newer DJI SRT format (e.g. Neo) that uses [latitude: xx] [longitude: yy]
+        if lat is None or lon is None:
+            lat_match = re.search(r"\[latitude:\s*([-\d.]+)\]", meta, re.IGNORECASE)
+            lon_match = re.search(r"\[longitude:\s*([-\d.]+)\]", meta, re.IGNORECASE)
+            if lat_match and lon_match:
+                lat = float(lat_match.group(1))
+                lon = float(lon_match.group(1))
+
+            # Also try to get rel_alt if not already found
+            if rel_alt is None:
+                rel_match = re.search(r"\[rel_alt:\s*([-\d.]+)\]", meta, re.IGNORECASE)
+                if rel_match:
+                    rel_alt = float(rel_match.group(1))
+
         # H xxxm (height)
         height = None
         if m := re.search(r"\bH\s+([-\d.]+)\s*m\b", meta, re.I):
