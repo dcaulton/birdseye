@@ -10,7 +10,7 @@ class Settings(BaseSettings):
     database_url: str = Field(
         default="postgresql+psycopg2://postgres:postgres@localhost:5432/birdseye"
     )
-    storage_root: str = Field(default="/home/dcaulton/repos/birdseye/data/birdseye")
+    storage_root: str = Field(default="data/birdseye")
 
     class Config:
         env_file = ".env"
