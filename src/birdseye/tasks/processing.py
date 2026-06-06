@@ -12,6 +12,7 @@ import cv2
 import structlog
 from geoalchemy2.shape import from_shape
 from shapely.geometry import MultiPoint, Point
+from sqlalchemy.orm import Session
 
 from birdseye.analysis.vegetation import compute_vegetation_indices
 from birdseye.core.config import settings
@@ -42,8 +43,10 @@ def process_uploaded_video(
     tmp_video_path: str,
     original_filename: str,
     tmp_srt_path: str | None = None,
+    db: Session | None = None,
 ) -> None:
-    db = SessionLocal()
+    if db is None:
+        db = SessionLocal()
     mission = None
     try:
         mission = db.query(Mission).filter(Mission.id == mission_id).first()

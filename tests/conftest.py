@@ -14,6 +14,9 @@ postgres_container = PostgresContainer(
     image="postgis/postgis:16-3.4", username="postgres", password="postgres", dbname="birdseye_test"
 )
 
+TestingSessionLocal = None
+engine = None
+
 
 @pytest.fixture(scope="session", autouse=True)  # type: ignore[misc]
 def setup_test_database() -> Generator[None, None, None]:
@@ -21,6 +24,7 @@ def setup_test_database() -> Generator[None, None, None]:
     postgres_container.start()
     connection_url = postgres_container.get_connection_url()
 
+    global TestingSessionLocal, engine
     engine = create_engine(connection_url, echo=False)
     Base.metadata.create_all(bind=engine)
 
@@ -44,3 +48,19 @@ def setup_test_database() -> Generator[None, None, None]:
 def client() -> TestClient:
     """FastAPI test client."""
     return TestClient(app)
+
+
+@pytest.fixture
+def db():
+    """Yields a database session connected to the test PostGIS container.
+    This fixture is intended for integration tests only.
+    """
+    if TestingSessionLocal is None:
+        raise RuntimeError(
+            "TestingSessionLocal is not initialized. Make sure setup_test_database ran first."
+        )
+    session = TestingSessionLocal()
+    try:
+        yield session
+    finally:
+        session.close()
