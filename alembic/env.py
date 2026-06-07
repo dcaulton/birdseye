@@ -42,6 +42,18 @@ def include_object(object, name, type_, reflected, compare_to):
             "pagc_gaz",
             "pagc_lex",
             "pagc_rules",
+            "featnames",
+            "addrfeat",
+            "state",
+            "county",
+            "place",
+            "zip_lookup",
+            "zip_lookup_base",
+            "zip_state",
+            "zip_state_loc",
+            "street_type_lookup",
+            "direction_lookup",
+            "secondary_unit_lookup",
         }:
             return False
     return True
@@ -74,7 +86,9 @@ def run_migrations_online() -> None:
         context.configure(
             connection=connection,
             target_metadata=target_metadata,
-            include_object=include_object,  # ← important
+            include_object=include_object,
+            include_schemas=True,
+            compare_server_default=True,
         )
 
         with context.begin_transaction():

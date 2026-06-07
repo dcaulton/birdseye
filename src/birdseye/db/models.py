@@ -6,7 +6,7 @@ from datetime import datetime
 
 from geoalchemy2 import Geometry
 from sqlalchemy import JSON, BigInteger, Column, DateTime, Float, ForeignKey, Integer, String, Text
-from sqlalchemy.orm import DeclarativeBase, relationship
+from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
 class Base(DeclarativeBase):
@@ -28,11 +28,27 @@ class Mission(Base):
     bounding_box = Column(Geometry("POLYGON", srid=4326), nullable=True)  # type: ignore[var-annotated]
     center_point = Column(Geometry("POINT", srid=4326), nullable=True)  # type: ignore[var-annotated]
 
-    status = Column(String(50), default="pending", nullable=False)
+    status: Mapped[str] = mapped_column(String(50), default="pending", nullable=False)
     error_message = Column(Text, nullable=True)
     meta = Column(JSON, default=dict)
 
     frames = relationship("Frame", back_populates="mission", cascade="all, delete-orphan")
+
+    status_logs: Mapped[list["MissionStatusLog"]] = relationship(
+        back_populates="mission", cascade="all, delete-orphan"
+    )
+
+
+class MissionStatusLog(Base):
+    __tablename__ = "mission_status_logs"
+
+    id: Mapped[int] = mapped_column(primary_key=True)
+    mission_id: Mapped[int] = mapped_column(ForeignKey("missions.id"), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False)
+    message: Mapped[str | None] = mapped_column(Text)
+    created_at: Mapped[datetime] = mapped_column(default=datetime.utcnow, nullable=False)
+
+    mission: Mapped["Mission"] = relationship(back_populates="status_logs")
 
 
 class Frame(Base):

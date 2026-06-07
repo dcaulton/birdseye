@@ -39,8 +39,6 @@ def test_process_uploaded_video_full_pipeline(db: Session, monkeypatch):
     db.add(mission)
     db.commit()
 
-    monkeypatch.setattr("birdseye.tasks.processing.SAMPLE_INTERVAL_SEC", 1.0)
-
     temp_video = Path("data/test/temp_test_video.mp4")
     shutil.copy2(test_video, temp_video)
 
@@ -54,9 +52,17 @@ def test_process_uploaded_video_full_pipeline(db: Session, monkeypatch):
 
     mission = db.query(Mission).filter_by(id=9999).first()  # type: ignore[assignment]
     assert mission is not None
-    assert mission.status == "completed"
+    assert mission.status == "frames_extracted"
 
     frames = db.query(Frame).filter_by(mission_id=9999).all()
     assert len(frames) > 0
+
+    print("BABBY")
+    print(mission.status_logs)
+    assert len(mission.status_logs) > 0
+    assert any(
+        log.status in ("completed", "frames_extracted", "orthomosaic_completed")
+        for log in mission.status_logs
+    )
 
     temp_video.unlink(missing_ok=True)

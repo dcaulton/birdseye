@@ -6,7 +6,7 @@ All models are designed to be mypy + ruff clean and serializable.
 from datetime import datetime
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, ConfigDict
 
 
 class Location(BaseModel):
@@ -14,6 +14,15 @@ class Location(BaseModel):
 
     lon: float
     lat: float
+
+
+class MissionStatusLogSchema(BaseModel):
+    id: int
+    status: str
+    message: str | None = None
+    created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MissionListItem(BaseModel):
@@ -26,6 +35,9 @@ class MissionListItem(BaseModel):
     duration_seconds: float | None = None
     center: Location | None = None
     frame_count: int = 0
+    status_logs: list[MissionStatusLogSchema] = []
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class MissionDetail(MissionListItem):
@@ -36,6 +48,7 @@ class MissionDetail(MissionListItem):
     error_message: str | None = None
     meta: dict[str, Any] = {}
     bounding_box: dict[str, Any] | None = None  # GeoJSON-like
+    status_logs: list[MissionStatusLogSchema] = []
 
 
 class FrameListItem(BaseModel):

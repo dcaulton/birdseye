@@ -4,13 +4,16 @@ Includes structured logging for diagnostics (especially telemetry / location pop
 """
 
 import contextlib
+import logging
 import shutil
+import tempfile
 from datetime import timedelta
 from pathlib import Path
 
 import cv2
 import structlog
-from geoalchemy2.shape import from_shape
+from geoalchemy2.shape import from_shape, to_shape
+from pyodm import Node
 from shapely.geometry import MultiPoint, Point
 from sqlalchemy.orm import Session
 
@@ -31,11 +34,10 @@ structlog.configure(
     wrapper_class=structlog.stdlib.BoundLogger,
     cache_logger_on_first_use=True,
 )
-
+logging.getLogger("birdseye").setLevel(logging.INFO)
 log = structlog.get_logger(__name__)
 
 STORAGE_ROOT = Path(settings.storage_root)
-SAMPLE_INTERVAL_SEC = 3.0
 
 
 def process_uploaded_video(
@@ -44,6 +46,7 @@ def process_uploaded_video(
     original_filename: str,
     tmp_srt_path: str | None = None,
     db: Session | None = None,
+    sample_interval_sec: float = 3.0,
 ) -> None:
     if db is None:
         db = SessionLocal()
@@ -109,7 +112,7 @@ def process_uploaded_video(
             "video_path": str(final_video.relative_to(STORAGE_ROOT)),
             "srt_path": str(srt_path.relative_to(STORAGE_ROOT)) if srt_path else None,
             "fps": fps,
-            "sample_interval_sec": SAMPLE_INTERVAL_SEC,
+            "sample_interval_sec": sample_interval_sec,
             "telemetry_points_parsed": len(telemetry),
         }
         db.commit()
@@ -124,7 +127,7 @@ def process_uploaded_video(
             cap.set(cv2.CAP_PROP_POS_FRAMES, frame_idx)
             ret, bgr = cap.read()
             if not ret:
-                sample_sec += SAMPLE_INTERVAL_SEC
+                sample_sec += sample_interval_sec
                 continue
 
             # Save frame + thumbnail
@@ -184,7 +187,7 @@ def process_uploaded_video(
             )
             db.add(frame_rec)
 
-            sample_sec += SAMPLE_INTERVAL_SEC
+            sample_sec += sample_interval_sec
 
         cap.release()
 
@@ -211,13 +214,13 @@ def process_uploaded_video(
             f"points_for_bbox={len(points_for_bbox)} | "
             f"frames_with_location={len([f for f in db.new if isinstance(f, Frame) and f.location])}"
         )
-        mission.status = "completed"
+        _log_status(db, mission_id, "frames_extracted", "Frame extraction completed")
         db.commit()
 
         log.info(
             "processing_completed",
             mission_id=mission_id,
-            total_frames=int(sample_sec / SAMPLE_INTERVAL_SEC),
+            total_frames=int(sample_sec / sample_interval_sec),
             frames_with_location=frames_with_location,
             has_geospatial_data=frames_with_location > 0,
         )
@@ -235,3 +238,70 @@ def process_uploaded_video(
             if p:
                 with contextlib.suppress(Exception):
                     Path(p).unlink(missing_ok=True)
+
+
+def generate_orthomosaic(mission_id: int, db: Session | None = None):
+    if db is None:
+        db = SessionLocal()
+
+    mission = db.query(Mission).filter(Mission.id == mission_id).first()
+    if not mission:
+        raise ValueError(f"Mission {mission_id} not found")
+
+    frames_dir = Path(settings.storage_root) / "missions" / str(mission_id) / "frames"
+    if not frames_dir.exists():
+        raise FileNotFoundError(f"No frames found for mission {mission_id}")
+
+    log.warning(f"[{mission_id}] Starting ODM task for orthomosaic generation")
+    ortho_dir = Path(settings.storage_root) / "missions" / str(mission_id) / "orthomosaic"
+    ortho_dir.mkdir(parents=True, exist_ok=True)
+
+    # Prepare images + geo.txt for ODM
+    with tempfile.TemporaryDirectory() as tmpdir:
+        tmp_images = Path(tmpdir) / "images"
+        tmp_images.mkdir()
+
+        geo_lines = []
+        for frame in (
+            db.query(Frame)
+            .filter(Frame.mission_id == mission_id)
+            .order_by(Frame.relative_time_seconds)
+        ):
+            if frame.location is None:
+                continue
+            src = Path(settings.storage_root) / frame.frame_path
+            dst = tmp_images / src.name
+            shutil.copy2(src, dst)
+
+            shape = to_shape(frame.location)
+            lon = shape.x
+            lat = shape.y
+            alt = frame.altitude_m or 0
+            geo_lines.append(f"{src.name} {lat} {lon} {alt}")
+
+        if not geo_lines:
+            raise ValueError("No frames with location data")
+
+        (tmp_images / "geo.txt").write_text("\n".join(geo_lines))
+
+        # Run ODM
+        node = Node("localhost", 3000)  # assumes ODM is running on default port
+        image_files = [str(p) for p in tmp_images.glob("*.jpg")]
+        log.warning(f"[{mission_id}] Sending {len(image_files)} images to ODM")
+        task = node.create_task(image_files, {"dsm": True, "orthophoto-resolution": 2.0})
+        log.warning(f"[{mission_id}] ODM task started: {task.uuid}")
+        task.wait_for_completion()
+        log.warning(f"[{mission_id}] ODM task completed: {task.uuid}")
+
+        # Copy outputs
+        task.download_assets(str(ortho_dir))
+        log.warning(f"[{mission_id}] Orthomosaic assets downloaded to {ortho_dir}")
+
+
+def _log_status(db: Session, mission_id: int, status: str, message: str | None = None):
+    from birdseye.db.models import Mission, MissionStatusLog
+
+    mission = db.query(Mission).filter(Mission.id == mission_id).first()
+    if mission:
+        mission.status = status
+        db.add(MissionStatusLog(mission_id=mission_id, status=status, message=message))

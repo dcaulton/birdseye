@@ -5,14 +5,15 @@ mypy + ruff clean.
 
 from typing import Annotated, Any
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query
 from geoalchemy2.shape import to_shape
 from shapely.geometry import mapping
 from sqlalchemy import func
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 
 from ....db.models import Frame, Mission
 from ....db.session import get_db
+from ....tasks.processing import generate_orthomosaic
 from ...schemas import (
     FrameDetail,
     FrameListItem,
@@ -51,15 +52,20 @@ def _to_geojson(geom: Any) -> dict[str, Any] | None:
 
 @router.get("", response_model=PaginatedMissions)
 def list_missions(
+    db: Annotated[Session, Depends(get_db)],
     skip: Annotated[int, Query(ge=0, description="Number of records to skip")] = 0,
     limit: Annotated[int, Query(ge=1, le=100, description="Max records to return")] = 20,
-    db: Session = Depends(get_db),  # noqa: B008
 ) -> PaginatedMissions:
     """List missions (newest first) with offset pagination."""
     total = db.query(func.count(Mission.id)).scalar() or 0
 
     db_missions = (
-        db.query(Mission).order_by(Mission.created_at.desc()).offset(skip).limit(limit).all()
+        db.query(Mission)
+        .options(selectinload(Mission.status_logs))
+        .order_by(Mission.created_at.desc())
+        .offset(skip)
+        .limit(limit)
+        .all()
     )
 
     # mypy-friendly frame counts
@@ -100,7 +106,12 @@ def get_mission(
     db: Session = Depends(get_db),  # noqa: B008
 ) -> MissionDetail:
     """Full mission detail with geospatial data."""
-    mission = db.query(Mission).filter(Mission.id == mission_id).first()
+    mission = (
+        db.query(Mission)
+        .options(selectinload(Mission.status_logs))
+        .filter(Mission.id == mission_id)
+        .first()
+    )
     if not mission:
         raise HTTPException(status_code=404, detail="Mission not found")
 
@@ -195,3 +206,16 @@ def get_frame(
         frame_path=frame.frame_path,
         analysis_metadata=frame.analysis_metadata or {},
     )
+
+
+@router.post("/{mission_id}/orthomosaic", status_code=202)
+def trigger_orthomosaic(
+    mission_id: int,
+    db: Annotated[Session, Depends(get_db)],
+    background_tasks: BackgroundTasks,
+):
+    try:
+        background_tasks.add_task(generate_orthomosaic, mission_id, db)
+        return {"mission_id": mission_id, "status": "queued"}
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None

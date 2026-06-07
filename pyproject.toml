@@ -22,6 +22,7 @@ dependencies = [
     "numpy>=1.26.0",
     "opencv-python-headless>=4.10.0",
     "shapely>=2.1.2",
+    "pyodm>=1.5.13",
 ]
 
 [tool.uv]
