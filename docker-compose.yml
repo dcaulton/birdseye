@@ -19,5 +19,15 @@ services:
       timeout: 5s
       retries: 5
 
+  nodeodm:
+    image: opendronemap/nodeodm
+    container_name: nodeodm
+    restart: unless-stopped
+    ports:
+      - "3000:3000"
+    volumes:
+      - nodeodm_data:/var/www/data
+
 volumes:
   birdseye_pg_data:
+  nodeodm_data:

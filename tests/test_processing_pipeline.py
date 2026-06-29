@@ -57,8 +57,6 @@ def test_process_uploaded_video_full_pipeline(db: Session, monkeypatch):
     frames = db.query(Frame).filter_by(mission_id=9999).all()
     assert len(frames) > 0
 
-    print("BABBY")
-    print(mission.status_logs)
     assert len(mission.status_logs) > 0
     assert any(
         log.status in ("completed", "frames_extracted", "orthomosaic_completed")

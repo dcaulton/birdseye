@@ -154,8 +154,6 @@ def process_uploaded_video(
                     lon = closest.get("lon")
 
                     if lat is not None and lon is not None:
-                        if -180 <= float(lat) <= 180 and -90 <= float(lon) <= 90:
-                            lat, lon = lon, lat
                         pt = Point(float(lon), float(lat))
                         location = from_shape(pt, srid=4326)
                         altitude = closest.get("alt_msl") or closest.get("rel_alt_m")

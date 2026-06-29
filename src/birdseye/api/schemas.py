@@ -63,7 +63,10 @@ class FrameListItem(BaseModel):
     gimbal_pitch_deg: float | None = None
     vegetation_index: float | None = None
     thumbnail_path: str | None = None
+    frame_path: str | None = None
     created_at: datetime
+
+    model_config = ConfigDict(from_attributes=True)
 
 
 class FrameDetail(FrameListItem):

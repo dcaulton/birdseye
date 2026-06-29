@@ -172,6 +172,7 @@ def list_mission_frames(
             gimbal_pitch_deg=f.gimbal_pitch_deg,
             vegetation_index=f.vegetation_index,
             thumbnail_path=f.thumbnail_path,
+            frame_path=f.frame_path,
             created_at=f.created_at,
         )
         items.append(item)
