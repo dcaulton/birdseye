@@ -1,8 +1,8 @@
 from logging.config import fileConfig
 
+from alembic import context  # type: ignore[attr-defined]
 from sqlalchemy import engine_from_config, pool
 
-from alembic import context  # type: ignore[attr-defined]
 from birdseye.db.models import Base
 
 # this is the Alembic Config object, which provides
@@ -25,14 +25,15 @@ target_metadata = Base.metadata
 def include_object(object, name, type_, reflected, compare_to):
     """
     Exclude PostGIS Tiger and Topology tables from autogenerate.
-    This prevents Alembic from trying to drop extension-owned tables.
+    Prevents Alembic from trying to drop extension-owned tables.
     """
     if type_ == "table":
-        # Ignore PostGIS Tiger geocoder and topology schemas
-        if object.schema in ("tiger", "topology"):
+        # Ignore entire tiger and topology schemas
+        if getattr(object, "schema", None) in ("tiger", "topology"):
             return False
-        # Also ignore common PostGIS extension tables that live in public
-        if name in {
+
+        # Common PostGIS Tiger / extension tables that live in public
+        postgis_tables = {
             "spatial_ref_sys",
             "geocode_settings",
             "geocode_settings_default",
@@ -44,18 +45,35 @@ def include_object(object, name, type_, reflected, compare_to):
             "pagc_rules",
             "featnames",
             "addrfeat",
+            "addr",  # ← was missing
             "state",
             "county",
+            "county_lookup",
+            "countysub_lookup",
+            "cousub",  # ← was missing
             "place",
+            "place_lookup",
             "zip_lookup",
             "zip_lookup_base",
+            "zip_lookup_all",
             "zip_state",
             "zip_state_loc",
             "street_type_lookup",
             "direction_lookup",
             "secondary_unit_lookup",
-        }:
+            "faces",  # ← was missing
+            "edges",  # ← was missing
+            "bg",
+            "tract",
+            "tabblock",
+            "tabblock20",
+            "zcta5",
+            "layer",
+            "topology",
+        }
+        if name in postgis_tables:
             return False
+
     return True
 
 
@@ -67,7 +85,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        include_object=include_object,  # ← important
+        include_object=include_object,
     )
 
     with context.begin_transaction():
