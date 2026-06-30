@@ -58,9 +58,7 @@ def test_process_uploaded_video_full_pipeline(db: Session, monkeypatch):
     assert len(frames) > 0
 
     assert len(mission.status_logs) > 0
-    assert any(
-        log.status in ("completed", "frames_extracted", "orthomosaic_completed")
-        for log in mission.status_logs
-    )
+    assert any(log.status in ("processing", "frames_extracted") for log in mission.status_logs)
 
     temp_video.unlink(missing_ok=True)
+    assert mission.status == "frames_extracted"

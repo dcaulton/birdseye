@@ -20,6 +20,7 @@ from ...schemas import (
     Location,
     MissionDetail,
     MissionListItem,
+    MissionStatusLogSchema,
     PaginatedFrames,
     PaginatedMissions,
 )
@@ -89,11 +90,16 @@ def list_missions(
         item = MissionListItem(
             id=int(m.id),
             created_at=m.created_at,
+            updated_at=m.updated_at,
             status=m.status,
             original_filename=m.original_filename,
             duration_seconds=m.duration_seconds,
+            file_size_bytes=m.file_size_bytes,
+            error_message=m.error_message,
             center=center,
             frame_count=counts.get(int(m.id), 0),
+            meta=getattr(m, "meta", {}) or {},
+            status_logs=[MissionStatusLogSchema.model_validate(log) for log in m.status_logs],
         )
         items.append(item)
 
@@ -134,6 +140,7 @@ def get_mission(
         center=center,
         bounding_box=bbox,
         frame_count=frame_count,
+        status_logs=[MissionStatusLogSchema.model_validate(log) for log in mission.status_logs],
     )
 
 
@@ -212,11 +219,40 @@ def get_frame(
 @router.post("/{mission_id}/orthomosaic", status_code=202)
 def trigger_orthomosaic(
     mission_id: int,
-    db: Annotated[Session, Depends(get_db)],
     background_tasks: BackgroundTasks,
+    db: Annotated[Session, Depends(get_db)],
+    sample_interval_sec: float = Query(
+        default=None,
+        ge=0.5,
+        le=10.0,
+        description="Override frame sampling interval (seconds). Leave empty to use the value from original processing.",
+    ),
 ):
+    mission = db.query(Mission).filter(Mission.id == mission_id).first()
+    if not mission:
+        raise HTTPException(status_code=404, detail="Mission not found")
+
+    # Store the sampling rate if provided (useful for re-processing)
+    if sample_interval_sec is not None:
+        if mission.meta is None:
+            mission.meta = {}
+
+        meta = dict(mission.meta)  # make a mutable copy
+        meta["sample_interval_sec"] = sample_interval_sec
+        mission.meta = meta  # type: ignore[assignment]
+        db.commit()
+
     try:
-        background_tasks.add_task(generate_orthomosaic, mission_id, db)
-        return {"mission_id": mission_id, "status": "queued"}
+        background_tasks.add_task(
+            generate_orthomosaic,
+            int(mission_id),
+            sample_interval_sec,  # pass it through
+        )
+        return {
+            "mission_id": mission_id,
+            "status": "queued",
+            "sample_interval_sec": sample_interval_sec
+            or mission.meta.get("sample_interval_sec", 3.0),
+        }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)) from None

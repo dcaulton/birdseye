@@ -26,15 +26,17 @@ class MissionStatusLogSchema(BaseModel):
 
 
 class MissionListItem(BaseModel):
-    """Lightweight mission for list views with paging."""
-
     id: int
     created_at: datetime
+    updated_at: datetime | None = None
     status: str
     original_filename: str
     duration_seconds: float | None = None
+    file_size_bytes: int | None = None
+    error_message: str | None = None
     center: Location | None = None
     frame_count: int = 0
+    meta: dict = {}
     status_logs: list[MissionStatusLogSchema] = []
 
     model_config = ConfigDict(from_attributes=True)

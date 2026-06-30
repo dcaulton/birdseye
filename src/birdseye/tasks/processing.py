@@ -14,12 +14,13 @@ import cv2
 import structlog
 from geoalchemy2.shape import from_shape, to_shape
 from pyodm import Node
+from pyodm.exceptions import TaskFailedError
 from shapely.geometry import MultiPoint, Point
 from sqlalchemy.orm import Session
 
 from birdseye.analysis.vegetation import compute_vegetation_indices
 from birdseye.core.config import settings
-from birdseye.db.models import Frame, Mission
+from birdseye.db.models import Frame, Mission, MissionStatusLog
 from birdseye.db.session import SessionLocal
 from birdseye.extraction.srt_parser import parse_dji_srt
 
@@ -66,6 +67,7 @@ def process_uploaded_video(
             original_filename=original_filename,
             has_srt=tmp_srt_path is not None,
         )
+        _log_status(db, mission_id, "processing", "Video processing started")
 
         mission_dir = STORAGE_ROOT / "missions" / str(mission_id)
         video_dir = mission_dir / "video"
@@ -238,7 +240,11 @@ def process_uploaded_video(
                     Path(p).unlink(missing_ok=True)
 
 
-def generate_orthomosaic(mission_id: int, db: Session | None = None):
+def generate_orthomosaic(
+    mission_id: int,
+    sample_interval_sec: float | None = None,
+    db: Session | None = None,
+):
     if db is None:
         db = SessionLocal()
 
@@ -246,60 +252,92 @@ def generate_orthomosaic(mission_id: int, db: Session | None = None):
     if not mission:
         raise ValueError(f"Mission {mission_id} not found")
 
+    # You can read the effective sampling rate here if needed:
+    effective_interval = sample_interval_sec or (mission.meta or {}).get("sample_interval_sec", 3.0)
+
+    _log_status(
+        db,
+        mission_id,
+        "orthomosaic_queued",
+        f"Orthomosaic generation started (sampling={effective_interval}s)",
+    )
+
     frames_dir = Path(settings.storage_root) / "missions" / str(mission_id) / "frames"
     if not frames_dir.exists():
+        _log_status(db, mission_id, "failed", "No frames found for orthomosaic")
         raise FileNotFoundError(f"No frames found for mission {mission_id}")
 
-    log.warning(f"[{mission_id}] Starting ODM task for orthomosaic generation")
+    log.info("orthomosaic_generation_started", mission_id=mission_id)
+
     ortho_dir = Path(settings.storage_root) / "missions" / str(mission_id) / "orthomosaic"
     ortho_dir.mkdir(parents=True, exist_ok=True)
 
-    # Prepare images + geo.txt for ODM
-    with tempfile.TemporaryDirectory() as tmpdir:
-        tmp_images = Path(tmpdir) / "images"
-        tmp_images.mkdir()
+    try:
+        with tempfile.TemporaryDirectory() as tmpdir:
+            tmp_images = Path(tmpdir) / "images"
+            tmp_images.mkdir()
 
-        geo_lines = []
-        for frame in (
-            db.query(Frame)
-            .filter(Frame.mission_id == mission_id)
-            .order_by(Frame.relative_time_seconds)
-        ):
-            if frame.location is None:
-                continue
-            src = Path(settings.storage_root) / frame.frame_path
-            dst = tmp_images / src.name
-            shutil.copy2(src, dst)
+            geo_lines = []
+            for frame in (
+                db.query(Frame)
+                .filter(Frame.mission_id == mission_id)
+                .order_by(Frame.relative_time_seconds)
+            ):
+                if frame.location is None:
+                    continue
 
-            shape = to_shape(frame.location)
-            lon = shape.x
-            lat = shape.y
-            alt = frame.altitude_m or 0
-            geo_lines.append(f"{src.name} {lat} {lon} {alt}")
+                src = Path(settings.storage_root) / frame.frame_path
+                dst = tmp_images / src.name
+                shutil.copy2(src, dst)
 
-        if not geo_lines:
-            raise ValueError("No frames with location data")
+                shape = to_shape(frame.location)
+                geo_lines.append(f"{src.name} {shape.y} {shape.x} {frame.altitude_m or 0}")
 
-        (tmp_images / "geo.txt").write_text("\n".join(geo_lines))
+            if not geo_lines:
+                raise ValueError("No frames with valid location data for ODM")
 
-        # Run ODM
-        node = Node("localhost", 3000)  # assumes ODM is running on default port
-        image_files = [str(p) for p in tmp_images.glob("*.jpg")]
-        log.warning(f"[{mission_id}] Sending {len(image_files)} images to ODM")
-        task = node.create_task(image_files, {"dsm": True, "orthophoto-resolution": 2.0})
-        log.warning(f"[{mission_id}] ODM task started: {task.uuid}")
-        task.wait_for_completion()
-        log.warning(f"[{mission_id}] ODM task completed: {task.uuid}")
+            (tmp_images / "geo.txt").write_text("\n".join(geo_lines))
 
-        # Copy outputs
-        task.download_assets(str(ortho_dir))
-        log.warning(f"[{mission_id}] Orthomosaic assets downloaded to {ortho_dir}")
+            image_files = [str(p) for p in tmp_images.glob("*.jpg")]
+            log.info("sending_images_to_odm", mission_id=mission_id, image_count=len(image_files))
+
+            node = Node("localhost", 3000)
+            task = node.create_task(image_files, {"dsm": True, "orthophoto-resolution": 2.0})
+
+            log.info("odm_task_started", mission_id=mission_id, task_id=task.uuid)
+            _log_status(db, mission_id, "orthomosaic_processing", f"ODM task started: {task.uuid}")
+
+            task.wait_for_completion()
+            log.info("odm_task_completed", mission_id=mission_id, task_id=task.uuid)
+
+            task.download_assets(str(ortho_dir))
+            log.info("orthomosaic_assets_downloaded", mission_id=mission_id, path=str(ortho_dir))
+
+        _log_status(
+            db, mission_id, "orthomosaic_completed", "Orthomosaic generation finished successfully"
+        )
+
+    except TaskFailedError as e:
+        error_msg = f"ODM task failed: {e}"
+        log.error("odm_task_failed", mission_id=mission_id, error=error_msg)
+        _log_status(db, mission_id, "failed", error_msg)
+        mission.error_message = error_msg[:500]
+        db.commit()
+        raise
+
+    except Exception as e:
+        error_msg = f"Orthomosaic generation failed: {str(e)}"
+        log.exception("orthomosaic_generation_failed", mission_id=mission_id, error=str(e))
+        _log_status(db, mission_id, "failed", error_msg)
+        mission.error_message = error_msg[:500]
+        db.commit()
+        raise
 
 
 def _log_status(db: Session, mission_id: int, status: str, message: str | None = None):
-    from birdseye.db.models import Mission, MissionStatusLog
-
     mission = db.query(Mission).filter(Mission.id == mission_id).first()
     if mission:
         mission.status = status
         db.add(MissionStatusLog(mission_id=mission_id, status=status, message=message))
+        db.commit()  # ← add this
+        db.refresh(mission)  # optional but helpful
