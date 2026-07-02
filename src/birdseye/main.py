@@ -10,7 +10,10 @@ from pathlib import Path
 from typing import Annotated, Any
 
 from fastapi import BackgroundTasks, Depends, FastAPI, File, HTTPException, Query, UploadFile
+from fastapi.staticfiles import StaticFiles
 from sqlalchemy.orm import Session
+
+from birdseye.core.config import settings
 
 from .api.v1.routers.missions import router as v1_missions_router
 from .db.models import Mission
@@ -28,6 +31,8 @@ app = FastAPI(title="birdseye", version="0.1.0", lifespan=lifespan)
 
 # Versioned API following project conventions (easy to add /v2 later)
 app.include_router(v1_missions_router, prefix="/api/v1")
+
+app.mount("/data", StaticFiles(directory=settings.storage_root), name="data")
 
 
 @app.post("/upload", status_code=202)

@@ -28,7 +28,6 @@ class MissionStatusLogSchema(BaseModel):
 class MissionListItem(BaseModel):
     id: int
     created_at: datetime
-    updated_at: datetime | None = None
     status: str
     original_filename: str
     duration_seconds: float | None = None
@@ -45,11 +44,24 @@ class MissionListItem(BaseModel):
 class MissionDetail(MissionListItem):
     """Full mission detail including geospatial and metadata."""
 
-    updated_at: datetime
+    created_at: datetime
+    updated_at: datetime | None = None
+    status: str
+    original_filename: str
+    duration_seconds: float | None = None
     file_size_bytes: int | None = None
     error_message: str | None = None
+    center: Location | None = None
+    frame_count: int = 0
     meta: dict[str, Any] = {}
     bounding_box: dict[str, Any] | None = None  # GeoJSON-like
+    point_cloud_path: str | None = None
+    mesh_path: str | None = None
+    orthophoto_path: str | None = None
+    orthophoto_download_url: str | None = None
+    point_cloud_download_url: str | None = None
+    mesh_download_url: str | None = None
+    dsm_path: str | None = None
     status_logs: list[MissionStatusLogSchema] = []
 
 

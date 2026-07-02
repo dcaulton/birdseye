@@ -11,6 +11,8 @@ from shapely.geometry import mapping
 from sqlalchemy import func
 from sqlalchemy.orm import Session, selectinload
 
+from birdseye.core.config import settings
+
 from ....db.models import Frame, Mission
 from ....db.session import get_db
 from ....tasks.processing import generate_orthomosaic
@@ -140,6 +142,23 @@ def get_mission(
         center=center,
         bounding_box=bbox,
         frame_count=frame_count,
+        orthophoto_path=mission.orthophoto_path,
+        dsm_path=mission.dsm_path,
+        point_cloud_path=mission.point_cloud_path,
+        mesh_path=mission.mesh_path,
+        orthophoto_download_url=(
+            f"{settings.asset_base_url}/{mission.orthophoto_path}"
+            if mission.orthophoto_path
+            else None
+        ),
+        point_cloud_download_url=(
+            f"{settings.asset_base_url}/{mission.point_cloud_path}"
+            if mission.point_cloud_path
+            else None
+        ),
+        mesh_download_url=(
+            f"{settings.asset_base_url}/{mission.mesh_path}" if mission.mesh_path else None
+        ),
         status_logs=[MissionStatusLogSchema.model_validate(log) for log in mission.status_logs],
     )
 

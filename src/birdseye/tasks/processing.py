@@ -313,6 +313,25 @@ def generate_orthomosaic(
             task.download_assets(str(ortho_dir))
             log.info("orthomosaic_assets_downloaded", mission_id=mission_id, path=str(ortho_dir))
 
+            # === Write asset paths to Mission after successful ODM run ===
+            ortho_dir = Path(settings.storage_root) / "missions" / str(mission_id) / "orthomosaic"
+
+            orthophoto = ortho_dir / "odm_orthophoto" / "odm_orthophoto.tif"
+            dsm = ortho_dir / "odm_dem" / "dsm.tif"
+            point_cloud = ortho_dir / "odm_georeferencing" / "odm_georeferenced_model.laz"
+            mesh = ortho_dir / "odm_texturing" / "odm_textured_model_geo.obj"
+
+            if orthophoto.exists():
+                mission.orthophoto_path = str(orthophoto.relative_to(settings.storage_root))
+            if dsm.exists():
+                mission.dsm_path = str(dsm.relative_to(settings.storage_root))
+            if point_cloud.exists():
+                mission.point_cloud_path = str(point_cloud.relative_to(settings.storage_root))
+            if mesh.exists():
+                mission.mesh_path = str(mesh.relative_to(settings.storage_root))
+
+            db.commit()
+
         _log_status(
             db, mission_id, "orthomosaic_completed", "Orthomosaic generation finished successfully"
         )

@@ -34,6 +34,14 @@ class Mission(Base):
 
     frames = relationship("Frame", back_populates="mission", cascade="all, delete-orphan")
 
+    # === Orthomosaic / 2D outputs ===
+    orthophoto_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    dsm_path: Mapped[str | None] = mapped_column(String, nullable=True)
+
+    # === Point cloud outputs ===
+    point_cloud_path: Mapped[str | None] = mapped_column(String, nullable=True)
+    mesh_path: Mapped[str | None] = mapped_column(String, nullable=True)
+
     status_logs: Mapped[list["MissionStatusLog"]] = relationship(
         back_populates="mission", cascade="all, delete-orphan"
     )
