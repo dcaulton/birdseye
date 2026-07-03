@@ -55,13 +55,18 @@ class MissionDetail(MissionListItem):
     frame_count: int = 0
     meta: dict[str, Any] = {}
     bounding_box: dict[str, Any] | None = None  # GeoJSON-like
+
     point_cloud_path: str | None = None
     mesh_path: str | None = None
     orthophoto_path: str | None = None
-    orthophoto_download_url: str | None = None
+    dsm_path: str | None = None
+
     point_cloud_download_url: str | None = None
     mesh_download_url: str | None = None
-    dsm_path: str | None = None
+    orthophoto_download_url: str | None = None
+
+    # Vegetation analysis results (from meta["vegetation"])
+    vegetation: dict = {}
     status_logs: list[MissionStatusLogSchema] = []
 
 

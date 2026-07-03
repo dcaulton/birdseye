@@ -16,6 +16,7 @@ from sqlalchemy.orm import Session
 from birdseye.core.config import settings
 
 from .api.v1.routers.missions import router as v1_missions_router
+from .core.logging import setup_logging
 from .db.models import Mission
 from .db.session import get_db, init_db
 from .tasks.processing import process_uploaded_video
@@ -27,12 +28,17 @@ async def lifespan(app: FastAPI) -> AsyncIterator[None]:
     yield
 
 
+# Ensure storage directory exists (critical for CI and fresh deployments)
+Path(settings.storage_root).mkdir(parents=True, exist_ok=True)
+
 app = FastAPI(title="birdseye", version="0.1.0", lifespan=lifespan)
 
 # Versioned API following project conventions (easy to add /v2 later)
 app.include_router(v1_missions_router, prefix="/api/v1")
 
 app.mount("/data", StaticFiles(directory=settings.storage_root), name="data")
+
+setup_logging()
 
 
 @app.post("/upload", status_code=202)

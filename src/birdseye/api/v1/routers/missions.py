@@ -15,7 +15,7 @@ from birdseye.core.config import settings
 
 from ....db.models import Frame, Mission
 from ....db.session import get_db
-from ....tasks.processing import generate_orthomosaic
+from ....tasks.processing import analyze_orthophoto, generate_orthomosaic
 from ...schemas import (
     FrameDetail,
     FrameListItem,
@@ -159,6 +159,7 @@ def get_mission(
         mesh_download_url=(
             f"{settings.asset_base_url}/{mission.mesh_path}" if mission.mesh_path else None
         ),
+        vegetation=(mission.meta or {}).get("vegetation") or {},  # type: ignore[call-overload]
         status_logs=[MissionStatusLogSchema.model_validate(log) for log in mission.status_logs],
     )
 
@@ -272,6 +273,25 @@ def trigger_orthomosaic(
             "status": "queued",
             "sample_interval_sec": sample_interval_sec
             or mission.meta.get("sample_interval_sec", 3.0),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=str(e)) from None
+
+
+@router.post("/{mission_id}/debug/analyze-orthophoto")
+def debug_analyze_orthophoto(mission_id: int, db: Annotated[Session, Depends(get_db)]):
+    """Debug endpoint - trigger vegetation analysis on an existing orthophoto."""
+    try:
+        analyze_orthophoto(mission_id, db)
+
+        # Re-fetch the mission to return latest stats
+        mission = db.query(Mission).filter(Mission.id == mission_id).first()
+        vegetation_stats = (mission.meta or {}).get("vegetation") or {} if mission else {}  # type: ignore[call-overload]
+
+        return {
+            "mission_id": mission_id,
+            "status": "completed",
+            "vegetation_stats": vegetation_stats,
         }
     except Exception as e:
         raise HTTPException(status_code=400, detail=str(e)) from None

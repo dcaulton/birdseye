@@ -4,19 +4,21 @@ Includes structured logging for diagnostics (especially telemetry / location pop
 """
 
 import contextlib
-import logging
 import shutil
 import tempfile
 from datetime import timedelta
 from pathlib import Path
 
 import cv2
+import numpy as np
+import rasterio
 import structlog
 from geoalchemy2.shape import from_shape, to_shape
 from pyodm import Node
 from pyodm.exceptions import TaskFailedError
 from shapely.geometry import MultiPoint, Point
 from sqlalchemy.orm import Session
+from sqlalchemy.orm.attributes import flag_modified
 
 from birdseye.analysis.vegetation import compute_vegetation_indices
 from birdseye.core.config import settings
@@ -24,18 +26,6 @@ from birdseye.db.models import Frame, Mission, MissionStatusLog
 from birdseye.db.session import SessionLocal
 from birdseye.extraction.srt_parser import parse_dji_srt
 
-# Configure structlog (basic setup - can be enhanced later)
-structlog.configure(
-    processors=[
-        structlog.processors.TimeStamper(fmt="iso"),
-        structlog.stdlib.add_log_level,
-        structlog.processors.JSONRenderer(),
-    ],
-    logger_factory=structlog.stdlib.LoggerFactory(),
-    wrapper_class=structlog.stdlib.BoundLogger,
-    cache_logger_on_first_use=True,
-)
-logging.getLogger("birdseye").setLevel(logging.INFO)
 log = structlog.get_logger(__name__)
 
 STORAGE_ROOT = Path(settings.storage_root)
@@ -332,6 +322,12 @@ def generate_orthomosaic(
 
             db.commit()
 
+            # Auto-run vegetation analysis
+            try:
+                analyze_orthophoto(mission_id, db)
+            except Exception as e:
+                log.warning("orthophoto_analysis_failed", mission_id=mission_id, error=str(e))
+
         _log_status(
             db, mission_id, "orthomosaic_completed", "Orthomosaic generation finished successfully"
         )
@@ -360,3 +356,86 @@ def _log_status(db: Session, mission_id: int, status: str, message: str | None =
         db.add(MissionStatusLog(mission_id=mission_id, status=status, message=message))
         db.commit()  # ← add this
         db.refresh(mission)  # optional but helpful
+
+
+def analyze_orthophoto(mission_id: int, db: Session | None = None):
+    if db is None:
+        db = SessionLocal()
+
+    mission = db.query(Mission).filter(Mission.id == mission_id).first()
+    if not mission or not mission.orthophoto_path:
+        log.warning("analyze_orthophoto_skipped", mission_id=mission_id, reason="no orthophoto")
+        return
+
+    _log_status(db, mission_id, "analyzing", "Analyzing orthophoto for vegetation metrics")
+
+    ortho_path = Path(settings.storage_root) / mission.orthophoto_path
+    vegetation_path = ortho_path.parent / "vegetation_exg.tif"
+
+    try:
+        with rasterio.open(ortho_path) as src:
+            # Read RGB
+            img = src.read([1, 2, 3]).astype(np.float32)
+            if img.max() > 1.0:
+                img = img / 255.0
+
+            red, green, blue = img[0], img[1], img[2]
+            exg = 2 * green - red - blue
+            exg = np.clip(exg, 0, 1)
+
+            # Debug
+            log.info(
+                "exg_stats",
+                mission_id=mission_id,
+                exg_min=float(np.nanmin(exg)),
+                exg_max=float(np.nanmax(exg)),
+                exg_mean=float(np.nanmean(exg)),
+            )
+
+            # Stats
+            veg_mask = exg > 0.15
+            vegetation_percent = float(np.sum(veg_mask) / veg_mask.size * 100)
+            stats = {
+                "mean_exg": float(np.nanmean(exg)),
+                "median_exg": float(np.nanmedian(exg)),
+                "std_exg": float(np.nanstd(exg)),
+                "vegetation_percent": round(vegetation_percent, 2),
+            }
+
+            # === Write vegetation layer while src is still open ===
+            print("DEBUG transform:", src.transform)
+            print("DEBUG crs:", src.crs)
+            with rasterio.open(
+                vegetation_path,
+                "w",
+                driver="GTiff",
+                width=src.width,
+                height=src.height,
+                count=1,
+                dtype=rasterio.float32,
+                crs=src.crs,
+                transform=src.transform,
+                compress="deflate",
+                tiled=True,
+                blockxsize=256,
+                blockysize=256,
+                nodata=np.nan,
+            ) as dst:
+                dst.write(exg.astype(np.float32), 1)
+
+        # Save stats to DB (after raster write is complete)
+        if mission.meta is None:
+            mission.meta = {}
+        mission.meta["vegetation"] = stats
+        flag_modified(mission, "meta")
+        db.commit()
+
+        log.info("vegetation_analysis_complete", mission_id=mission_id, stats=stats)
+        _log_status(
+            db, mission_id, "analysis_completed", "Orthophoto vegetation analysis completed"
+        )
+
+    except Exception as e:
+        log.exception("orthophoto_analysis_failed", mission_id=mission_id)
+        _log_status(db, mission_id, "failed", f"Analysis failed: {str(e)[:300]}")
+        raise
