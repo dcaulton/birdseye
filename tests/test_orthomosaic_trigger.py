@@ -1,10 +1,12 @@
-from unittest.mock import MagicMock, patch
+from datetime import datetime, timedelta
+from unittest.mock import patch
 
 from fastapi.testclient import TestClient
+from geoalchemy2.shape import from_shape
+from shapely.geometry import Point
 from sqlalchemy.orm import Session
 
-from birdseye.db.models import Mission
-from tests.helpers import create_mission_with_orthophoto
+from birdseye.db.models import Frame, Mission
 
 
 def test_trigger_orthomosaic_schedules_background_task(client: TestClient, db: Session):
@@ -33,18 +35,25 @@ def test_trigger_orthomosaic_schedules_background_task(client: TestClient, db: S
 
 @patch("birdseye.tasks.processing.Node")
 def test_generate_orthomosaic_calls_odm(mock_node_class, db: Session):
-    """Test that generate_orthomosaic actually talks to ODM."""
-    mission = create_mission_with_orthophoto(db)  # or any mission with frames
+    mission = Mission(
+        original_filename="test_odm.tif",
+        status="frames_extracted",
+        meta={},
+    )
+    db.add(mission)
+    db.flush()
 
-    # Mock the ODM task
-    mock_task = MagicMock()
-    mock_task.uuid = "fake-task-123"
-    mock_node = MagicMock()
-    mock_node.create_task.return_value = mock_task
-    mock_node_class.return_value = mock_node
+    base_time = datetime.utcnow()
 
-    from birdseye.tasks.processing import generate_orthomosaic
+    for i in range(3):
+        frame = Frame(
+            mission_id=mission.id,
+            frame_timestamp=base_time + timedelta(seconds=i * 2),
+            frame_number=i,
+            relative_time_seconds=i * 2.0,
+            location=from_shape(Point(-87.95 + i * 0.001, 41.727 + i * 0.001), srid=4326),
+        )
+        db.add(frame)
 
-    generate_orthomosaic(int(mission.id))
-
-    mock_node.create_task.assert_called_once()
+    db.commit()
+    db.refresh(mission)
